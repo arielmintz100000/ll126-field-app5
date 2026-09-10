@@ -1,8 +1,0 @@
-{
-  "name": "ll126-field-app",
-  "version": "2.0.0",
-  "private": true,
-  "description": "LL126 parapet inspection field app for Capitol Compliance. No build step, no dependencies.",
-  "type": "module",
-  "engines": { "node": ">=20" }
-}

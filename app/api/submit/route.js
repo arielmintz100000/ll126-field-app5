@@ -19,12 +19,18 @@ const DIRECTIONS = [
   ["west", "West"],
 ];
 
+const hasNumber = (v) => v !== "" && v !== null && v !== undefined && Number.isFinite(Number(v));
+
 // Builds the note body written into "<Direction> Parapet Info".
 function composeNotes(entry) {
   if (!entry) return "";
   const parts = [];
   if (entry.condition) parts.push(`Condition: ${entry.condition}`);
   if (entry.defects?.length) parts.push(`Defects: ${entry.defects.join(", ")}`);
+  // Measurements in inches, in the same "Height = 12 in." wording the
+  // report generator already reads from hand-typed notes.
+  if (hasNumber(entry.height)) parts.push(`Height = ${Number(entry.height)} in.`);
+  if (hasNumber(entry.width)) parts.push(`Width = ${Number(entry.width)} in.`);
   if (entry.notes) parts.push(`Notes: ${entry.notes}`);
   if (entry.photoUrls?.length) {
     parts.push(`Photos:\n${entry.photoUrls.map((u) => `- ${u}`).join("\n")}`);
@@ -159,6 +165,18 @@ export async function POST(request) {
     if (entry.condition) await write(`${label} Parapet Condition`, entry.condition);
     const notes = composeNotes(entry);
     if (notes) await write(`${label} Parapet Info`, notes);
+
+    // Optional dedicated number fields. If someone adds e.g. "North Parapet
+    // Height" to the Projects list later, the app fills it with no redeploy.
+    // Absent fields are skipped quietly: the numbers are already in the notes.
+    for (const [dim, dimLabel] of [["height", "Height"], ["width", "Width"]]) {
+      if (!hasNumber(entry[dim])) continue;
+      const field =
+        findField(fields, `${label} Parapet ${dimLabel}`) ||
+        findField(fields, `${label} Parapet ${dimLabel} (in)`) ||
+        findField(fields, `${label} ${dimLabel}`);
+      if (field) results.push(await setCustomField(taskId, field, Number(entry[dim])));
+    }
   }
 
   // Whole-building observations.
@@ -205,6 +223,13 @@ export async function POST(request) {
     `Submitted: ${new Date().toISOString()}`,
     wallMaterials.length ? `Parapet wall materials: ${wallMaterials.join(", ")}` : null,
     copingMaterials.length ? `Coping materials: ${copingMaterials.join(", ")}` : null,
+    ...DIRECTIONS.map(([key, label]) => {
+      const e = elevations[key] || {};
+      if (!hasNumber(e.height) && !hasNumber(e.width)) return null;
+      const h = hasNumber(e.height) ? `${Number(e.height)} in.` : "n/a";
+      const w = hasNumber(e.width) ? `${Number(e.width)} in.` : "n/a";
+      return `${label}: Height ${h} · Width ${w}`;
+    }),
     summary.score ? `Parapet Score: ${summary.score}` : null,
     summary.videoUrl ? `360 Video: ${summary.videoUrl}` : null,
     signOff.signatureUrl ? `Signature: ${signOff.signatureUrl}` : null,

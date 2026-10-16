@@ -48,6 +48,10 @@ const DEFECTS = [
   "Missing coping stones",
   "Loose coping stones",
   "Potential wiring issues",
+  "UV radiation damage",
+  "Cracks in protective paint layer",
+  "Cracks/Open Seams in outer layer roof material",
+  "Unstable appurtenance",
 ];
 
 // Multi-select: a parapet is often more than one material, and the coping is
@@ -62,6 +66,34 @@ const MATERIALS = [
   "Stucco/EIFS",
   "Other",
 ];
+
+// Parapet wall only (Patrick, 10/16): glass parapets and modified-bitumen
+// clad walls show up often enough to need their own chips.
+const WALL_MATERIALS = [
+  "Brick",
+  "CMU (Concrete Masonry Unit)",
+  "Stone",
+  "Terra Cotta",
+  "Cast-in-Place Concrete",
+  "Metal",
+  "Stucco/EIFS",
+  "Glass",
+  "Modified Bitumen",
+  "Other",
+];
+
+// ClickUp's options win, but anything the app knows about that the field is
+// still missing is kept, so new chips show up before the field is updated.
+const mergeOptions = (fromClickUp, fallback) => {
+  const base = fromClickUp?.length ? [...fromClickUp] : [...fallback];
+  const norm = (v) => String(v).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const have = new Set(base.map(norm));
+  const extras = fallback.filter((m) => !have.has(norm(m)));
+  const otherIdx = base.findIndex((m) => norm(m) === "other");
+  if (otherIdx >= 0) base.splice(otherIdx, 0, ...extras);
+  else base.push(...extras);
+  return base;
+};
 
 const SCORES = [
   { name: "Safe", tone: "good", sub: "No hazardous condition observed." },
@@ -92,7 +124,22 @@ const BUILDING_ROWS = [
   ["Billing address", "billingAddress", true],
 ];
 
-const emptyElevation = () => ({ condition: "", defects: [], notes: "", photos: [] });
+const emptyElevation = () => ({
+  condition: "",
+  defects: [],
+  height: "",
+  width: "",
+  notes: "",
+  photos: [],
+});
+
+// Inches only. Accepts "41.5", strips anything that is not a digit or a dot.
+const cleanInches = (v) => {
+  const s = String(v ?? "").replace(/[^0-9.]/g, "");
+  const [whole, ...rest] = s.split(".");
+  return rest.length ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
+};
+const fmtInches = (v) => (v === "" || v === undefined || v === null ? "" : `${v} in.`);
 
 const newId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -332,6 +379,8 @@ export default function InspectPage() {
             {
               condition: elevations[key].condition,
               defects: elevations[key].defects,
+              height: elevations[key].height,
+              width: elevations[key].width,
               notes: elevations[key].notes,
               photoUrls: elevations[key].photos.map((p) => p.url).filter(Boolean),
             },
@@ -531,12 +580,8 @@ export default function InspectPage() {
   // The three conditions are fixed by the DOB narrative logic. The submit route
   // matches them to whatever the dropdown is actually called in the workspace.
   const conditionOptions = CONDITIONS;
-  const wallMaterialOptions = load.data.options?.wallMaterials?.length
-    ? load.data.options.wallMaterials
-    : MATERIALS;
-  const copingMaterialOptions = load.data.options?.copingMaterials?.length
-    ? load.data.options.copingMaterials
-    : MATERIALS;
+  const wallMaterialOptions = mergeOptions(load.data.options?.wallMaterials, WALL_MATERIALS);
+  const copingMaterialOptions = mergeOptions(load.data.options?.copingMaterials, MATERIALS);
   const toggleMaterial = (group, value) =>
     setSummary((p) => ({
       ...p,
@@ -758,6 +803,40 @@ export default function InspectPage() {
                 )}
 
                 <div className="field">
+                  <span className="label">Measurements (inches)</span>
+                  <div className="measure-row">
+                    {[
+                      ["height", "Height"],
+                      ["width", "Width"],
+                    ].map(([dim, dimLabel]) => (
+                      <label className="measure" key={dim} htmlFor={`${dim}-${key}`}>
+                        <span className="measure-key">{dimLabel}</span>
+                        <span className="measure-box">
+                          <input
+                            id={`${dim}-${key}`}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            placeholder="0"
+                            value={elevations[key][dim]}
+                            onChange={(e) =>
+                              setElevations((p) => ({
+                                ...p,
+                                [key]: { ...p[key], [dim]: cleanInches(e.target.value) },
+                              }))
+                            }
+                          />
+                          <span className="measure-unit">in.</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="measure-hint">
+                    Fence, rail or raised sections go in the notes, e.g. "48 in. with fence".
+                  </p>
+                </div>
+
+                <div className="field">
                   <label className="label" htmlFor={`notes-${key}`}>Notes</label>
                   <textarea
                     id={`notes-${key}`}
@@ -848,6 +927,11 @@ export default function InspectPage() {
                         {elevations[key].defects.length
                           ? ` — ${elevations[key].defects.join(", ")}`
                           : ""}
+                        {elevations[key].height || elevations[key].width
+                          ? ` · H ${fmtInches(elevations[key].height) || "?"} × W ${
+                              fmtInches(elevations[key].width) || "?"
+                            }`
+                          : " · no measurements"}
                         {elevations[key].photos.length
                           ? ` · ${elevations[key].photos.length} photo(s)`
                           : " · no photos"}

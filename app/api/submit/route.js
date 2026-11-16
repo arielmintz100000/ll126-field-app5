@@ -21,16 +21,36 @@ const DIRECTIONS = [
 
 const hasNumber = (v) => v !== "" && v !== null && v !== undefined && Number.isFinite(Number(v));
 
+// Only walls with something wrong carry a right-of-way answer.
+const hasDefect = (condition) =>
+  condition === "Some Defects Present" || condition === "Catastrophic Failure";
+const isNoParapet = (entry) => entry?.condition === "No Parapet";
+const rightOfWay = (entry) =>
+  hasDefect(entry?.condition) && /^(yes|no)$/i.test(entry?.rightOfWay || "")
+    ? entry.rightOfWay
+    : "";
+
+// Accepted names for the per-wall right-of-way dropdown (Yes / No).
+const rightOfWayFieldNames = (label) => [
+  `${label} Parapet Defect in Right of Way?`,
+  `${label} Parapet Defect in Right of Way`,
+  `${label} Affects Public Right of Way?`,
+];
+
 // Builds the note body written into "<Direction> Parapet Info".
 function composeNotes(entry) {
   if (!entry) return "";
   const parts = [];
   if (entry.condition) parts.push(`Condition: ${entry.condition}`);
   if (entry.defects?.length) parts.push(`Defects: ${entry.defects.join(", ")}`);
+  if (rightOfWay(entry)) parts.push(`Public right of way: ${rightOfWay(entry)}`);
   // Measurements in inches, in the same "Height = 12 in." wording the
-  // report generator already reads from hand-typed notes.
-  if (hasNumber(entry.height)) parts.push(`Height = ${Number(entry.height)} in.`);
-  if (hasNumber(entry.width)) parts.push(`Width = ${Number(entry.width)} in.`);
+  // report generator already reads from hand-typed notes. A side with no
+  // parapet has nothing to measure.
+  if (!isNoParapet(entry)) {
+    if (hasNumber(entry.height)) parts.push(`Height = ${Number(entry.height)} in.`);
+    if (hasNumber(entry.width)) parts.push(`Width = ${Number(entry.width)} in.`);
+  }
   if (entry.notes) parts.push(`Notes: ${entry.notes}`);
   if (entry.photoUrls?.length) {
     parts.push(`Photos:\n${entry.photoUrls.map((u) => `- ${u}`).join("\n")}`);
@@ -166,11 +186,14 @@ export async function POST(request) {
     const notes = composeNotes(entry);
     if (notes) await write(`${label} Parapet Info`, notes);
 
+    // Right-of-way answer drives the report score wording (Render Reveal).
+    if (rightOfWay(entry)) await writeFirstField(rightOfWayFieldNames(label), rightOfWay(entry));
+
     // Optional dedicated number fields. If someone adds e.g. "North Parapet
     // Height" to the Projects list later, the app fills it with no redeploy.
     // Absent fields are skipped quietly: the numbers are already in the notes.
     for (const [dim, dimLabel] of [["height", "Height"], ["width", "Width"]]) {
-      if (!hasNumber(entry[dim])) continue;
+      if (isNoParapet(entry) || !hasNumber(entry[dim])) continue;
       const field =
         findField(fields, `${label} Parapet ${dimLabel}`) ||
         findField(fields, `${label} Parapet ${dimLabel} (in)`) ||
@@ -203,6 +226,11 @@ export async function POST(request) {
 
   if (summary.pastRepairs) await write("Past Repairs", summary.pastRepairs);
 
+  // Roof issues that aren't parapet defects (leaks, drainage, equipment).
+  // The report shows these as a separate note, never as a wall finding.
+  const otherObservations = String(summary.otherObservations || "").trim();
+  if (otherObservations) await write("Non-Parapet Observations", otherObservations);
+
   // Two fields share the name "Parapet Score" on this list. The dropdown
   // (Safe / SWARMP / Unsafe) is the one the report reads.
   if (summary.score) {
@@ -225,12 +253,18 @@ export async function POST(request) {
     copingMaterials.length ? `Coping materials: ${copingMaterials.join(", ")}` : null,
     ...DIRECTIONS.map(([key, label]) => {
       const e = elevations[key] || {};
-      if (!hasNumber(e.height) && !hasNumber(e.width)) return null;
-      const h = hasNumber(e.height) ? `${Number(e.height)} in.` : "n/a";
-      const w = hasNumber(e.width) ? `${Number(e.width)} in.` : "n/a";
-      return `${label}: Height ${h} · Width ${w}`;
+      if (isNoParapet(e)) return `${label}: No Parapet`;
+      const bits = [];
+      if (hasNumber(e.height) || hasNumber(e.width)) {
+        const h = hasNumber(e.height) ? `${Number(e.height)} in.` : "n/a";
+        const w = hasNumber(e.width) ? `${Number(e.width)} in.` : "n/a";
+        bits.push(`Height ${h}`, `Width ${w}`);
+      }
+      if (rightOfWay(e)) bits.push(`Public right of way: ${rightOfWay(e)}`);
+      return bits.length ? `${label}: ${bits.join(" · ")}` : null;
     }),
     summary.score ? `Parapet Score: ${summary.score}` : null,
+    otherObservations ? `Non-parapet observations: ${otherObservations}` : null,
     summary.videoUrl ? `360 Video: ${summary.videoUrl}` : null,
     signOff.signatureUrl ? `Signature: ${signOff.signatureUrl}` : null,
   ].filter(Boolean);

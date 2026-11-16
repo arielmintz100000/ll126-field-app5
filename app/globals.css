@@ -315,6 +315,10 @@ textarea:focus, input[type="text"]:focus {
 .choice[aria-pressed="true"][data-tone="good"] .choice-dot { background: var(--good); }
 .choice[aria-pressed="true"][data-tone="defect"] .choice-dot { background: var(--defect); }
 .choice[aria-pressed="true"][data-tone="fail"] .choice-dot { background: var(--fail); }
+.choice[data-tone="none"][aria-pressed="true"] { border-left-color: var(--dust); }
+.choice[data-tone="none"] .choice-dot { border-color: var(--dust); }
+.choice[aria-pressed="true"][data-tone="none"] .choice-dot { background: var(--dust); }
+.choices.row { grid-template-columns: 1fr 1fr; }
 .choice-body { min-width: 0; display: block; }
 .choice-name {
   display: block;

@@ -142,8 +142,25 @@ workspace. Matching ignores case and spacing. The app expects these on the
 Projects list:
 
 `North / East / South / West Parapet Condition` · `North / East / South / West
-Parapet Info` · `Parapet Wall Materials` · `Coping Materials` · `Past Repairs` ·
-`Parapet Score` · `Project Phase`
+Parapet Info` · `North / East / South / West Parapet Defect in Right of Way?` ·
+`Parapet Wall Materials` · `Coping Materials` · `Past Repairs` ·
+`Non-Parapet Observations` · `Parapet Score` · `Project Phase`
+
+### November 2026 update (Patrick's Oct 29 feedback)
+
+- **No Parapet** is a fourth wall condition. It skips defects, measurements and
+  the right-of-way question; notes and photos stay optional.
+- **Public right of way?** (Yes / No) is asked on every wall marked Some Defects
+  Present or Catastrophic Failure, and the wall can't be left unanswered. The
+  answer goes to that wall's `Parapet Defect in Right of Way?` field and into its
+  notes. The inspector never picks "Safe with Repairs Recommended": the report
+  generator works that out from these answers.
+- **Other roof issues (not parapet)** on the summary screen writes to
+  `Non-Parapet Observations`, so leaks and drainage stay out of the wall findings.
+- **Safe score check:** if the score is Safe but a damaged wall is on the right of
+  way, the summary screen shows a warning. Submitting still works.
+- The sign-off comment shows "No Parapet" for those walls and each damaged
+  wall's right-of-way answer.
 
 ### The two materials fields must be Labels type
 

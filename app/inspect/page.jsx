@@ -38,7 +38,16 @@ const CONDITIONS = [
     tone: "fail",
     sub: "Describe it in the notes. Flag it before you leave the roof.",
   },
+  {
+    name: "No Parapet",
+    tone: "none",
+    sub: "No parapet wall on this side: rail, cornice, or the next building's wall. Say which in the notes.",
+  },
 ];
+
+// Walls with something wrong get the public right-of-way question (Patrick, 10/29).
+const hasDefect = (condition) =>
+  condition === "Some Defects Present" || condition === "Catastrophic Failure";
 
 const DEFECTS = [
   "Displacement",
@@ -127,6 +136,7 @@ const BUILDING_ROWS = [
 const emptyElevation = () => ({
   condition: "",
   defects: [],
+  rightOfWay: "",
   height: "",
   width: "",
   notes: "",
@@ -162,6 +172,7 @@ export default function InspectPage() {
     copingMaterials: [],
     pastRepairs: "",
     score: "",
+    otherObservations: "",
     video: [],
   });
   const [signOff, setSignOff] = useState({
@@ -379,6 +390,7 @@ export default function InspectPage() {
             {
               condition: elevations[key].condition,
               defects: elevations[key].defects,
+              rightOfWay: hasDefect(elevations[key].condition) ? elevations[key].rightOfWay : "",
               height: elevations[key].height,
               width: elevations[key].width,
               notes: elevations[key].notes,
@@ -391,6 +403,7 @@ export default function InspectPage() {
           copingMaterials: summary.copingMaterials,
           pastRepairs: summary.pastRepairs,
           score: summary.score,
+          otherObservations: summary.otherObservations,
           videoUrl: summary.video.map((v) => v.url).filter(Boolean).join(", "),
         },
         signOff: { ...signOff, signature: undefined, signatureUrl },
@@ -423,7 +436,11 @@ export default function InspectPage() {
   const canAdvance = (() => {
     if (current.id === "materials") return summary.wallMaterials.length > 0;
     if (DIRECTIONS.some((d) => d.key === current.id)) {
-      return Boolean(elevations[current.id].condition);
+      const e = elevations[current.id];
+      if (!e.condition) return false;
+      // A wall with defects can't move on until the right-of-way question is answered.
+      if (hasDefect(e.condition)) return Boolean(e.rightOfWay);
+      return true;
     }
     if (current.id === "summary") return Boolean(summary.score);
     return true;
@@ -757,6 +774,9 @@ export default function InspectPage() {
                             ...p[key],
                             condition: c.name,
                             defects: c.name === "Some Defects Present" ? p[key].defects : [],
+                            rightOfWay: hasDefect(c.name) ? p[key].rightOfWay : "",
+                            height: c.name === "No Parapet" ? "" : p[key].height,
+                            width: c.name === "No Parapet" ? "" : p[key].width,
                           },
                         }))
                       }
@@ -802,6 +822,41 @@ export default function InspectPage() {
                   </div>
                 )}
 
+                {hasDefect(elevations[key].condition) && (
+                  <div className="field">
+                    <span className="label">Public right of way?</span>
+                    <p className="hint">
+                      Is any defect on this wall over a sidewalk, street or other public area?
+                    </p>
+                    <div className="choices row">
+                      {[
+                        ["Yes", "fail"],
+                        ["No", "good"],
+                      ].map(([answer, tone]) => (
+                        <button
+                          key={answer}
+                          type="button"
+                          className="choice"
+                          data-tone={tone}
+                          aria-pressed={elevations[key].rightOfWay === answer}
+                          onClick={() =>
+                            setElevations((p) => ({
+                              ...p,
+                              [key]: { ...p[key], rightOfWay: answer },
+                            }))
+                          }
+                        >
+                          <span className="choice-dot" />
+                          <span className="choice-body">
+                            <span className="choice-name">{answer}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {elevations[key].condition !== "No Parapet" && (
                 <div className="field">
                   <span className="label">Measurements (inches)</span>
                   <div className="measure-row">
@@ -835,6 +890,7 @@ export default function InspectPage() {
                     Fence, rail or raised sections go in the notes, e.g. "48 in. with fence".
                   </p>
                 </div>
+                )}
 
                 <div className="field">
                   <label className="label" htmlFor={`notes-${key}`}>Notes</label>
@@ -887,6 +943,40 @@ export default function InspectPage() {
                 ))}
               </div>
 
+              {summary.score === "Safe" &&
+                DIRECTIONS.some(
+                  ({ key }) =>
+                    hasDefect(elevations[key].condition) && elevations[key].rightOfWay === "Yes"
+                ) && (
+                  <div className="notice warn">
+                    <div>
+                      <strong>Double-check the score</strong>
+                      You marked Safe, but{" "}
+                      {DIRECTIONS.filter(
+                        ({ key }) =>
+                          hasDefect(elevations[key].condition) &&
+                          elevations[key].rightOfWay === "Yes"
+                      )
+                        .map(({ label }) => label)
+                        .join(", ")}{" "}
+                      has a defect on the public right of way. You can still submit.
+                    </div>
+                  </div>
+                )}
+
+              <div className="field">
+                <label className="label" htmlFor="other-obs">Other roof issues (not parapet)</label>
+                <p className="hint">
+                  Leaks, drainage, equipment. Goes in the report as a separate note, not a parapet finding.
+                </p>
+                <textarea
+                  id="other-obs"
+                  value={summary.otherObservations}
+                  placeholder="e.g. cooling tower leaking onto the roof; standing water at the north drain"
+                  onChange={(e) => setSummary((p) => ({ ...p, otherObservations: e.target.value }))}
+                />
+              </div>
+
               <div className="field">
                 <span className="label">360 video</span>
                 <p className="hint">One continuous pass around the full parapet.</p>
@@ -927,7 +1017,12 @@ export default function InspectPage() {
                         {elevations[key].defects.length
                           ? ` — ${elevations[key].defects.join(", ")}`
                           : ""}
-                        {elevations[key].height || elevations[key].width
+                        {hasDefect(elevations[key].condition)
+                          ? ` · right of way: ${elevations[key].rightOfWay || "not answered"}`
+                          : ""}
+                        {elevations[key].condition === "No Parapet"
+                          ? ""
+                          : elevations[key].height || elevations[key].width
                           ? ` · H ${fmtInches(elevations[key].height) || "?"} × W ${
                               fmtInches(elevations[key].width) || "?"
                             }`

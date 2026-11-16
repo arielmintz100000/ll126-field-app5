@@ -39,6 +39,12 @@ const WRITE_TARGETS = [
   ["Coping Materials", "Coping Material"],
   ["Parapet Score"],
   ["Project Phase"],
+  ...["North", "East", "South", "West"].map((d) => [
+    `${d} Parapet Defect in Right of Way?`,
+    `${d} Parapet Defect in Right of Way`,
+    `${d} Affects Public Right of Way?`,
+  ]),
+  ["Non-Parapet Observations"],
 ];
 
 export async function GET(_request, { params }) {
